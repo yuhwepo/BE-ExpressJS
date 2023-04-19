@@ -107,6 +107,7 @@ userRouter.post("/", validateUser, (req, res) => {
 	}
 });
 
+// Delete user
 userRouter.delete("/:id", (req, res) => {
 	const userId = parseInt(req.params.id, 10);
 
