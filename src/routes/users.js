@@ -1,32 +1,22 @@
 const express = require("express");
+const db = require("../database/connection");
+const { validateUser } = require("../middlewares/validate");
+const {
+	getOne,
+	getMany,
+	executeQuery,
+	updateOne,
+} = require("../database/query");
+const { verifyToken } = require("../middlewares/verifyToken");
+
 const userRouter = express.Router();
-const connection = require("../database/connection");
-
-const validateUser = require("../middlewares/validate.js");
-
-let users = [
-	{
-		id: 1,
-		fullname: "Nguyen Van Minh Huy",
-		gender: true,
-		age: 20,
-	},
-	{
-		id: 2,
-		fullname: "Nguyen Thi Phi",
-		gender: false,
-		age: 18,
-	},
-];
-
-let counter = users.length;
 
 // Get all user
 userRouter.get("/", (req, res) => {
 	// const user = "SELECT * FROM users";
 	const user =
 		"SELECT id, fullname, IF(gender=1, 'true', 'false') AS gender, age FROM users";
-	connection.query(user, (err, result) => {
+	db.query(user, (err, result) => {
 		if (err) {
 			return err;
 		}
@@ -35,13 +25,13 @@ userRouter.get("/", (req, res) => {
 });
 
 // Get user by id
-userRouter.get("/:id", (req, res) => {
+userRouter.get("/:id", async (req, res) => {
 	const userId = parseInt(req.params.id, 10);
 
 	// const user = "SELECT * FROM users WHERE id =?";
 	const user =
 		"SELECT id, fullname, IF(gender=1, 'true', 'false') AS gender, age FROM users WHERE id =?";
-	connection.query(user, [userId], (err, result) => {
+	db.query(user, [userId], (err, result) => {
 		if (err) {
 			return err;
 		}
@@ -53,38 +43,50 @@ userRouter.get("/:id", (req, res) => {
 });
 
 // Update user by id
-userRouter.patch("/:id", validateUser, (req, res) => {
+userRouter.patch("/:id", [verifyToken, validateUser], async (req, res) => {
 	const userId = parseInt(req.params.id, 10);
 
 	const fullname = req.body.fullname;
 	const age = req.body.age;
 	const gender = Boolean(req.body.gender);
 
-	const user = "SELECT * FROM users WHERE id = ?";
-	connection.query(user, [userId], (err, result) => {
-		if (err) {
-			return err;
-		}
-		if (result.length == 0) {
-			return res.status(404).json({ message: "User not found" });
-		}
-		const userUpdated =
-			"UPDATE users SET fullname = ?, age = ?, gender = ? WHERE id = ?";
-		connection.query(
-			userUpdated,
-			[fullname, age, gender, userId],
-			(err, result) => {
-				if (err) {
-					return res
-						.status(400)
-						.json({ message: "Error updating user" });
-				}
-				return res
-					.status(200)
-					.json({ message: "User updated", result });
-			}
-		);
-	});
+	if (req.user.id === userId) {
+		await updateOne({
+			db,
+			query: `UPDATE users SET fullname = ?, age = ?, gender = ? WHERE id = ?`,
+			params: [fullname, age, gender, userId],
+		});
+		return res.status(200).json({ message: "User updated" });
+	}
+	return res
+		.status(400)
+		.json({ message: "You are not allowed to update this" });
+
+	// const user = "SELECT * FROM users WHERE id = ?";
+	// db.query(user, [userId], (err, result) => {
+	// 	if (err) {
+	// 		return err;
+	// 	}
+	// 	if (result.length == 0) {
+	// 		return res.status(404).json({ message: "User not found" });
+	// 	}
+	// 	const userUpdated =
+	// 		"UPDATE users SET fullname = ?, age = ?, gender = ? WHERE id = ?";
+	// 	db.query(
+	// 		userUpdated,
+	// 		[fullname, age, gender, userId],
+	// 		(err, result) => {
+	// 			if (err) {
+	// 				return res
+	// 					.status(400)
+	// 					.json({ message: "Error updating user" });
+	// 			}
+	// 			return res
+	// 				.status(200)
+	// 				.json({ message: "User updated", result });
+	// 		}
+	// 	);
+	// });
 });
 
 // Create a new user
@@ -96,7 +98,7 @@ userRouter.post("/", validateUser, (req, res) => {
 	if (fullname !== undefined && age !== undefined && gender !== undefined) {
 		const insertUser =
 			"INSERT INTO users(fullname, age, gender) VALUES (?, ?, ?)";
-		connection.query(insertUser, [fullname, age, gender], (err, result) => {
+		db.query(insertUser, [fullname, age, gender], (err, result) => {
 			if (err) {
 				return res
 					.status(400)
@@ -113,7 +115,7 @@ userRouter.delete("/:id", (req, res) => {
 
 	const user = "DELETE FROM users WHERE id = ?";
 
-	connection.query(user, [userId], (err, result) => {
+	db.query(user, [userId], (err, result) => {
 		if (err) {
 			return err;
 		}
