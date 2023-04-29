@@ -44,11 +44,21 @@ const updateOne = async ({ db, query, params }) => {
 
 	return false;
 };
+const deleteOne = async ({ db, query, params }) => {
+	const result = await executeQuery({ db, query, params });
+
+	if (result.affectedRows > 0) {
+		return true;
+	}
+
+	return false;
+};
 
 module.exports = {
 	getOne,
 	getMany,
 	create,
 	updateOne,
+	deleteOne,
 	executeQuery,
 };
