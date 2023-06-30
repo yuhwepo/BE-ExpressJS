@@ -52,7 +52,7 @@ authRouter.post("/login", async function (req, res, next) {
 			},
 			secret,
 			{
-				expiresIn: "1h",
+				expiresIn: "1d",
 			}
 		);
 		return res
