@@ -19,6 +19,9 @@ const {
 	deleteOne,
 } = require("../database/query");
 const { mailService } = require("../services/mail.service");
+const { cacheService} = require("../services/cache.service");
+const { canAccessBy } = require("../middlewares/verifyRole");
+const allowPermission = require("../config/allowPermission");
 
 const secret = process.env.JWT_SECRET;
 
@@ -41,6 +44,7 @@ authRouter.post("/login", async function (req, res, next) {
 	});
 
 	if (isPasswordMatch) {
+		await cacheService.setOneUser(user.id)
 		const jwt = jsonwebtoken.sign(
 			{
 				id: user.id,
@@ -48,7 +52,6 @@ authRouter.post("/login", async function (req, res, next) {
 				fullname: user.fullname,
 				gender: user.gender,
 				age: user.age,
-				isAdmin: user.isAdmin,
 			},
 			secret,
 			{
@@ -61,6 +64,12 @@ authRouter.post("/login", async function (req, res, next) {
 	}
 
 	return res.status(401).json({ message: "Invalid credentials" });
+});
+
+authRouter.get('/authorization-test', canAccessBy(allowPermission.CreateUser, allowPermission.ViewUser), async function (req, res) {
+	return res.status(200).json({
+		message: 'test authorization successfully',
+	});
 });
 
 authRouter.post(

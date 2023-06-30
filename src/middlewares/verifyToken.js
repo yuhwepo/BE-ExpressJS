@@ -23,7 +23,7 @@ const verifyToken = (req, res, next) => {
 
 const verifyTokenAndAuthorization = async (req, res, next) => {
 	await verifyToken(req, res, () => {
-		if (req.user.id === parseInt(req.params.id) || req.user.isAdmin) {
+		if (req.user.id === parseInt(req.params.id)) {
 			next();
 		} else {
 			return res.status(403).json("You are not allowed!");
