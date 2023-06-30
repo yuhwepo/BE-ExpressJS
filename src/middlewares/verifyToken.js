@@ -21,4 +21,14 @@ const verifyToken = (req, res, next) => {
 	}
 };
 
-module.exports = { verifyToken };
+const verifyTokenAndAuthorization = async (req, res, next) => {
+	await verifyToken(req, res, () => {
+		if (req.user.id === parseInt(req.params.id) || req.user.isAdmin) {
+			next();
+		} else {
+			return res.status(403).json("You are not allowed!");
+		}
+	});
+};
+
+module.exports = { verifyToken, verifyTokenAndAuthorization };

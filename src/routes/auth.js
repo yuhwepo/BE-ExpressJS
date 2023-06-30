@@ -3,7 +3,8 @@ const express = require("express");
 const jsonwebtoken = require("jsonwebtoken");
 const crypto = require("crypto");
 
-const db = require("../database/connection");
+// const db = require("../database/connection");
+const db = require("../database/knex-connection");
 const { hashwithRandomSalt, comparePassword } = require("../middlewares/hash");
 const {
 	validateUser,
@@ -26,12 +27,8 @@ const authRouter = express.Router();
 authRouter.post("/login", async function (req, res, next) {
 	// Get username and  password from request body
 	const { username, password } = req.body;
-	// Find user in database
-	const user = await getOne({
-		db,
-		query: "SELECT * FROM users WHERE username = ?",
-		params: username,
-	});
+
+	const user = await db("users").select().where("username", username).first();
 	// User does not exist
 	if (!user) {
 		return res.status(400).json({ message: "User not found" });
@@ -42,6 +39,7 @@ authRouter.post("/login", async function (req, res, next) {
 		hashedPassword: user.password,
 		salt: user.salt,
 	});
+
 	if (isPasswordMatch) {
 		const jwt = jsonwebtoken.sign(
 			{
@@ -50,6 +48,7 @@ authRouter.post("/login", async function (req, res, next) {
 				fullname: user.fullname,
 				gender: user.gender,
 				age: user.age,
+				isAdmin: user.isAdmin,
 			},
 			secret,
 			{
@@ -60,6 +59,7 @@ authRouter.post("/login", async function (req, res, next) {
 			.status(200)
 			.json({ message: "Login successful", token: jwt });
 	}
+
 	return res.status(401).json({ message: "Invalid credentials" });
 });
 
@@ -77,63 +77,58 @@ authRouter.post(
 			age,
 		} = req.body;
 
+		const existedUsername = await db("users")
+			.select()
+			.where("username", username)
+			.first();
+
+		if (existedUsername) {
+			return res
+				.status(200)
+				.json({ message: "Username already existed" });
+		}
+
 		const { hashedPassword, salt } = await hashwithRandomSalt(password);
 
-		await create({
-			db,
-			query: `INSERT INTO users (username, password, fullname, gender, email, age, salt) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			params: [
-				username,
-				hashedPassword,
-				fullname,
-				gender,
-				email,
-				age,
-				salt,
-			],
+		await db("users").insert({
+			username,
+			password: hashedPassword,
+			fullname,
+			gender,
+			email,
+			age,
+			salt,
 		});
 		return res.status(201).json({ message: "User created successfully" });
 	}
 );
 
-// authRouter.post("/reset-password", async function (req, res) {
-// 	const { email } = req.body;
-
-// 	await mailService.sendEmail({
-// 		emailFrom: "yuhwepo@gmail.com",
-// 		emailTo: email,
-// 		emailSubject: "Reset Password",
-// 		emailText: "Text....",
-// 	});
-// 	return res.status(200).json({ message: "Reset Password" });
-// });
-
 authRouter.post("/forgot-password", async (req, res) => {
 	try {
 		const { email } = req.body;
 
-		const user = await getOne({
-			db,
-			query: "SELECT * FROM users WHERE email = ?",
-			params: [email],
-		});
+		const user = await db("users").select().where("email", email).first();
 
 		if (!user) {
 			return res.status(404).json({ message: "Email not found" });
 		}
 
 		const secretKey = crypto.randomBytes(32).toString("hex");
+
 		const passwordResetToken = crypto
 			.createHash("sha256")
 			.update(secretKey)
 			.digest("hex");
 
 		const passwordResetAt = new Date(Date.now() + 10 * 60 * 1000);
-		const updateStatus = await updateOne({
-			db,
-			query: "UPDATE users SET passwordResetToken = ?, passwordResetAt = ? WHERE email = ?",
-			params: [passwordResetToken, passwordResetAt, email],
-		});
+
+		const updateStatus = await db("users").where("email", email).update(
+			{
+				passwordResetToken,
+				passwordResetAt,
+			},
+			["passwordResetToken", "passwordResetAt"]
+		);
 
 		if (updateStatus) {
 			mailService.sendEmail({
@@ -146,6 +141,7 @@ authRouter.post("/forgot-password", async (req, res) => {
 				.status(200)
 				.json({ message: "Reset Password email sent successfully" });
 		}
+
 		return res.status(400).json({ message: "Can not reset password" });
 	} catch (err) {
 		return res.status(500).json({ message: err.message });
@@ -156,11 +152,14 @@ authRouter.post("/reset-password", async (req, res) => {
 	try {
 		const { email, passwordResetToken, newPassword } = req.body;
 
-		const user = await getOne({
-			db,
-			query: "SELECT * FROM users WHERE email = ? AND passwordResetToken = ? AND passwordResetAt = ?",
-			params: [email, passwordResetToken, new Date()],
-		});
+		const user = await db("users")
+			.select()
+			.where({
+				email,
+				passwordResetToken,
+			})
+			.andWhere("passwordResetAt", ">", new Date())
+			.first();
 
 		if (!user) {
 			return res
@@ -170,12 +169,14 @@ authRouter.post("/reset-password", async (req, res) => {
 
 		const { hashedPassword, salt } = await hashwithRandomSalt(newPassword);
 
-		const updateStatus = await updateOne({
-			db,
-			query: "UPDATE users SET password = ?, salt = ?, passwordResetToken = null, passwordResetAt = null WHERE email = ?",
-			params: [hashedPassword, salt, email],
-		});
-
+		const updateStatus = await db("users")
+			.update({
+				password: hashedPassword,
+				salt: salt,
+				passwordResetToken: null,
+				passwordResetAt: null,
+			})
+			.where("email", email);
 		if (updateStatus) {
 			return res
 				.status(200)
