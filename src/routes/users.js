@@ -18,6 +18,8 @@ const {
 	verifyTokenAndAuthorization,
 } = require("../middlewares/verifyToken");
 const { hashwithRandomSalt, comparePassword } = require("../middlewares/hash");
+const { canAccessBy  } = require("../middlewares/verifyRole");
+const Permission = require("../config/allowPermission");
 
 const userRouter = express.Router();
 
@@ -92,9 +94,8 @@ userRouter.get("/:id", verifyTokenAndAuthorization, async (req, res) => {
 // Create new user by Admin
 userRouter.post(
 	"/createUser",
-	[verifyToken, validateUser, validateRegisterRequest],
+	[validateUser, validateRegisterRequest, verifyTokenAndAuthorization ,canAccessBy(Permission.CreateUser)],
 	async (req, res) => {
-		if (req.user.isAdmin) {
 			const {
 				username,
 				email,
@@ -135,13 +136,11 @@ userRouter.post(
 					.status(500)
 					.json({ message: "Internal Server Error" });
 			}
-		}
-		return res.json({ message: "You are not allowed" });
 	}
 );
 
 // Update user by id
-userRouter.patch("/:id", [verifyTokenAndAuthorization], async (req, res) => {
+userRouter.patch("/:id", [verifyTokenAndAuthorization, canAccessBy(Permission.UpdateUser)], async (req, res) => {
 	const userId = parseInt(req.params.id, 10);
 	const { fullname, age } = req.body;
 	const gender = Boolean(req.body.gender);
@@ -153,7 +152,7 @@ userRouter.patch("/:id", [verifyTokenAndAuthorization], async (req, res) => {
 });
 
 // Delete user
-userRouter.delete("/:id", verifyTokenAndAuthorization, async (req, res) => {
+userRouter.delete("/:id", [verifyTokenAndAuthorization, canAccessBy(Permission.DeleteUser)], async (req, res) => {
 	const userId = parseInt(req.params.id, 10);
 
 	try {
@@ -164,6 +163,40 @@ userRouter.delete("/:id", verifyTokenAndAuthorization, async (req, res) => {
 		}
 
 		return res.status(204).json({ message: "User deleted" });
+	} catch (err) {
+		console.log(err);
+		return res.status(500).json({ message: "Internal Server Error" });
+	}
+});
+
+userRouter.post('/:id/roles', async (req, res) => {
+	const userId = parseInt(req.params.id, 10);
+	const { roleId } = req.body;
+
+	try {
+		const user = await db("users").where("id", userId).first();
+		if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+		const role = await db("role").where("id", roleId).first();
+
+		if (!role) {
+            return res.status(404).json({ message: "Role not found" });
+        }
+
+		const existingUserRole = await db("user_role").where("userID", userId).where("roleID", roleId).first();
+
+		if (existingUserRole) {
+			return res.status(409).json({ message: "User already has this role" });
+		}
+
+		await db("user_role").insert({
+			userID: userId,
+			roleID: roleId,
+		});
+
+		return res.status(200).json({ message: "Role assigned successfully"});
 	} catch (err) {
 		console.log(err);
 		return res.status(500).json({ message: "Internal Server Error" });

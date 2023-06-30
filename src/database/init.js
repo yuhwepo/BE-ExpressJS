@@ -128,6 +128,16 @@ async function createTables() {
 		const tableExistsUsersOptions = await connection.schema.hasTable(
 			"users_options"
 		);
+		const tableExistsRole = await connection.schema.hasTable("role");
+		const tableExistsUserRole = await connection.schema.hasTable(
+			"user_role"
+		);
+		const tableExistsPermission = await connection.schema.hasTable(
+			"permission"
+		);
+		const tableExistsRolePermission = await connection.schema.hasTable(
+			"role_permission"
+		);
 
 		if (!tableExistsUsers) {
 			await connection.schema.createTable("users", (table) => {
@@ -147,7 +157,6 @@ async function createTables() {
 					.foreign("createdBy")
 					.references("users.id")
 					.onDelete("CASCADE");
-				table.boolean("isAdmin").defaultTo(false);
 			});
 
 			console.log('Table "users" created successfully!');
@@ -216,6 +225,62 @@ async function createTables() {
 			console.log('Table "users_options" created successfully!');
 		} else {
 			console.log('Table "users_options" already exists!');
+		}
+
+		if (!tableExistsRole) {
+			await connection.schema.createTable("role", (table) => {
+				table.increments("id").primary();
+				table.string("name", 50).notNullable();
+			});
+			console.log('Table "role" created successfully!');
+		} else {
+			console.log('Table "role" already exists!');
+		}
+
+		if (!tableExistsUserRole) {
+			await connection.schema.createTable("user_role", (table) => {
+				table.integer("userID").unsigned().notNullable();
+				table.integer("roleID").unsigned().notNullable();
+				table
+					.foreign("userID")
+					.references("users.id")
+					.onDelete("CASCADE");
+				table
+					.foreign("roleID")
+					.references("role.id")
+					.onDelete("CASCADE");
+			});
+			console.log('Table "user_role" created successfully!');
+		} else {
+			console.log('Table "user_role" already exists!');
+		}
+
+		if (!tableExistsPermission) {
+			await connection.schema.createTable("permission", (table) => {
+				table.increments("id").primary();
+				table.string("type", 255).notNullable();
+			});
+			console.log('Table "permission" created successfully!');
+		} else {
+			console.log('Table "permission" already exists!');
+		}
+
+		if (!tableExistsRolePermission) {
+			await connection.schema.createTable("role_permission", (table) => {
+				table.integer("roleID").unsigned().notNullable();
+				table.integer("permissionID").unsigned().notNullable();
+				table
+					.foreign("roleID")
+					.references("role.id")
+					.onDelete("CASCADE");
+				table
+					.foreign("permissionID")
+					.references("permission.id")
+					.onDelete("CASCADE");
+			});
+			console.log('Table "role_permission" created successfully!');
+		} else {
+			console.log('Table "role_permission" already exists!');
 		}
 	} catch (error) {
 		console.error("Error creating tables:", error);
