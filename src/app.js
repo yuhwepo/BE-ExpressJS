@@ -1,14 +1,18 @@
 const express = require("express");
+const cors = require("cors");
 require("dotenv").config();
-
+const db = require("./database/knex-connection");
 const app = express();
 const port = 3000;
-
+app.use(cors());
 const userRouter = require("./routes/users");
 const authRouter = require("./routes/auth");
 const voteRouter = require("./routes/vote");
 const roleRouter = require("./routes/role");
 const permissionsRouter = require("./routes/permission");
+db.raw("select 1+1 as result").then(() => {
+	console.log("Connected to MySQL database!");
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));

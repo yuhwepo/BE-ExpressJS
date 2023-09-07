@@ -18,13 +18,13 @@ const {
 	verifyTokenAndAuthorization,
 } = require("../middlewares/verifyToken");
 const { hashwithRandomSalt, comparePassword } = require("../middlewares/hash");
-const { canAccessBy  } = require("../middlewares/verifyRole");
+const { canAccessBy } = require("../middlewares/verifyRole");
 const Permission = require("../config/allowPermission");
 
 const userRouter = express.Router();
 
 // Get user by params or all user with pagination
-userRouter.get("/", async (req, res) => {
+userRouter.get("/", verifyToken, async (req, res) => {
 	const nameQuery = req.query.name;
 	const page_size = parseInt(req.query.page_size) || 10;
 	let page_index = parseInt(req.query.page_index) || 1;
@@ -94,98 +94,104 @@ userRouter.get("/:id", verifyTokenAndAuthorization, async (req, res) => {
 // Create new user by Admin
 userRouter.post(
 	"/createUser",
-	[validateUser, validateRegisterRequest, verifyTokenAndAuthorization ,canAccessBy(Permission.CreateUser)],
+	[
+		validateUser,
+		validateRegisterRequest,
+		verifyTokenAndAuthorization,
+		canAccessBy(Permission.CreateUser),
+	],
 	async (req, res) => {
-			const {
+		const { username, email, password, confirmPassword, fullname, age } =
+			req.body;
+		const gender = Boolean(req.body.gender);
+
+		const existedUsername = await db("users")
+			.select()
+			.where("username", username)
+			.first();
+		if (existedUsername) {
+			return res.status(200).json({ message: "Username already existed" });
+		}
+
+		const { hashedPassword, salt } = await hashwithRandomSalt(password);
+		const createdBy = req.user.id;
+		try {
+			await db("users").insert({
 				username,
 				email,
-				password,
-				confirmPassword,
+				password: hashedPassword,
 				fullname,
+				gender,
 				age,
-			} = req.body;
-			const gender = Boolean(req.body.gender);
-
-			const existedUsername = await db("users")
-				.select()
-				.where("username", username)
-				.first();
-			if (existedUsername) {
-				return res
-					.status(200)
-					.json({ message: "Username already existed" });
-			}
-
-			const { hashedPassword, salt } = await hashwithRandomSalt(password);
-			const createdBy = req.user.id;
-			try {
-				await db("users").insert({
-					username,
-					email,
-					password: hashedPassword,
-					fullname,
-					gender,
-					age,
-					salt,
-					createdBy,
-				});
-				return res.status(201).json({ message: "Created new user" });
-			} catch (err) {
-				console.log(err);
-				return res
-					.status(500)
-					.json({ message: "Internal Server Error" });
-			}
+				salt,
+				createdBy,
+			});
+			return res.status(201).json({ message: "Created new user" });
+		} catch (err) {
+			console.log(err);
+			return res.status(500).json({ message: "Internal Server Error" });
+		}
 	}
 );
 
 // Update user by id
-userRouter.patch("/:id", [verifyTokenAndAuthorization, canAccessBy(Permission.UpdateUser)], async (req, res) => {
-	const userId = parseInt(req.params.id, 10);
-	const { fullname, age } = req.body;
-	const gender = Boolean(req.body.gender);
-	await db("users")
-		.where("id", userId)
-		.update({ fullname, age, gender }, ["id", "fullname", "age", "gender"]);
+userRouter.patch(
+	"/:id",
+	[verifyTokenAndAuthorization, canAccessBy(Permission.UpdateUser)],
+	async (req, res) => {
+		const userId = parseInt(req.params.id, 10);
+		const { fullname, age } = req.body;
+		const gender = Boolean(req.body.gender);
+		await db("users")
+			.where("id", userId)
+			.update({ fullname, age, gender }, ["id", "fullname", "age", "gender"]);
 
-	return res.status(200).json({ message: "User updated" });
-});
+		return res.status(200).json({ message: "User updated" });
+	}
+);
 
 // Delete user
-userRouter.delete("/:id", [verifyTokenAndAuthorization, canAccessBy(Permission.DeleteUser)], async (req, res) => {
-	const userId = parseInt(req.params.id, 10);
+userRouter.delete(
+	"/:id",
+	[verifyTokenAndAuthorization, canAccessBy(Permission.DeleteUser)],
+	async (req, res) => {
+		const userId = parseInt(req.params.id, 10);
 
-	try {
-		const user = await db("users").where("id", userId).del();
+		try {
+			const user = await db("users").where("id", userId).del();
 
-		if (!user) {
-			return res.status(404).json({ message: "User not found" });
+			if (!user) {
+				return res.status(404).json({ message: "User not found" });
+			}
+
+			return res.status(204).json({ message: "User deleted" });
+		} catch (err) {
+			console.log(err);
+			return res.status(500).json({ message: "Internal Server Error" });
 		}
-
-		return res.status(204).json({ message: "User deleted" });
-	} catch (err) {
-		console.log(err);
-		return res.status(500).json({ message: "Internal Server Error" });
 	}
-});
+);
 
-userRouter.post('/:id/roles', async (req, res) => {
+userRouter.post("/:id/roles", async (req, res) => {
 	const userId = parseInt(req.params.id, 10);
 	const { roleId } = req.body;
 
 	try {
 		const user = await db("users").where("id", userId).first();
 		if (!user) {
-            return res.status(404).json({ message: "User not found" });
-        }
+			return res.status(404).json({ message: "User not found" });
+		}
 
 		const role = await db("role").where("id", roleId).first();
 
 		if (!role) {
-            return res.status(404).json({ message: "Role not found" });
-        }
+			return res.status(404).json({ message: "Role not found" });
+		}
 
-		const existingUserRole = await db("user_role").where("userID", userId).where("roleID", roleId).first();
+		const existingUserRole = await db("user_role")
+			.where("userID", userId)
+			.where("roleID", roleId)
+			.first();
 
 		if (existingUserRole) {
 			return res.status(409).json({ message: "User already has this role" });
@@ -196,7 +202,7 @@ userRouter.post('/:id/roles', async (req, res) => {
 			roleID: roleId,
 		});
 
-		return res.status(200).json({ message: "Role assigned successfully"});
+		return res.status(200).json({ message: "Role assigned successfully" });
 	} catch (err) {
 		console.log(err);
 		return res.status(500).json({ message: "Internal Server Error" });
